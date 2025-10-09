@@ -1,0 +1,175 @@
+-- StarterPlayerScripts
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local camera = workspace.CurrentCamera
+local player = Players.LocalPlayer
+
+-- GUI
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "FreecamGUI"
+
+-- ปุ่ม Freecam
+local toggleBtn = Instance.new("TextButton", screenGui)
+toggleBtn.Size = UDim2.new(0,150,0,50)
+toggleBtn.Position = UDim2.new(0,20,0,20)
+toggleBtn.Text = "Freecam OFF"
+toggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
+toggleBtn.TextScaled = true
+
+-- Joystick ซ้าย
+local joystickBG = Instance.new("Frame", screenGui)
+joystickBG.Size = UDim2.new(0,150,0,150)
+joystickBG.Position = UDim2.new(0,20,1,-170)
+joystickBG.BackgroundColor3 = Color3.fromRGB(50,50,50)
+joystickBG.BackgroundTransparency = 0.5
+joystickBG.AnchorPoint = Vector2.new(0,1)
+
+local joystickKnob = Instance.new("Frame", joystickBG)
+joystickKnob.Size = UDim2.new(0,60,0,60)
+joystickKnob.Position = UDim2.new(0.5,-30,0.5,-30)
+joystickKnob.BackgroundColor3 = Color3.fromRGB(200,200,200)
+joystickKnob.BackgroundTransparency = 0.3
+joystickKnob.AnchorPoint = Vector2.new(0.5,0.5)
+
+-- ปุ่มบินขึ้น/ลง
+local flyUpBtn = Instance.new("TextButton", screenGui)
+flyUpBtn.Size = UDim2.new(0,50,0,50)
+flyUpBtn.Position = UDim2.new(0.85,0,0.7,0)
+flyUpBtn.Text = "▲"
+flyUpBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+flyUpBtn.TextColor3 = Color3.fromRGB(255,255,255)
+flyUpBtn.TextScaled = true
+
+local flyDownBtn = Instance.new("TextButton", screenGui)
+flyDownBtn.Size = UDim2.new(0,50,0,50)
+flyDownBtn.Position = UDim2.new(0.85,0,0.8,0)
+flyDownBtn.Text = "▼"
+flyDownBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+flyDownBtn.TextColor3 = Color3.fromRGB(255,255,255)
+flyDownBtn.TextScaled = true
+
+-- ปุ่มซ้าย/ขวา
+local flyLeftBtn = Instance.new("TextButton", screenGui)
+flyLeftBtn.Size = UDim2.new(0,50,0,50)
+flyLeftBtn.Position = UDim2.new(0.8,0,0.75,0)
+flyLeftBtn.Text = "<"
+flyLeftBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+flyLeftBtn.TextColor3 = Color3.fromRGB(255,255,255)
+flyLeftBtn.TextScaled = true
+
+local flyRightBtn = Instance.new("TextButton", screenGui)
+flyRightBtn.Size = UDim2.new(0,50,0,50)
+flyRightBtn.Position = UDim2.new(0.9,0,0.75,0)
+flyRightBtn.Text = ">"
+flyRightBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+flyRightBtn.TextColor3 = Color3.fromRGB(255,255,255)
+flyRightBtn.TextScaled = true
+
+-- ปุ่มหน้า/หลัง F/B
+local flyFrontBtn = Instance.new("TextButton", screenGui)
+flyFrontBtn.Size = UDim2.new(0,50,0,50)
+flyFrontBtn.Position = UDim2.new(0.85,0,0.6,0)
+flyFrontBtn.Text = "F"
+flyFrontBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+flyFrontBtn.TextColor3 = Color3.fromRGB(255,255,255)
+flyFrontBtn.TextScaled = true
+
+local flyBackBtn = Instance.new("TextButton", screenGui)
+flyBackBtn.Size = UDim2.new(0,50,0,50)
+flyBackBtn.Position = UDim2.new(0.85,0,0.9,0)
+flyBackBtn.Text = "B"
+flyBackBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+flyBackBtn.TextColor3 = Color3.fromRGB(255,255,255)
+flyBackBtn.TextScaled = true
+
+-- Freecam ตัวแปร
+local flying = false
+local camCF = camera.CFrame
+local speed = 75
+local moveVector = Vector3.new(0,0,0)
+local joystickStart = nil
+local lookDelta = Vector2.new(0,0)
+local flyUp, flyDown, flyLeft, flyRight, flyFront, flyBack = 0,0,0,0,0,0
+
+-- เปิด/ปิด Freecam
+local function enableFreecam()
+	flying = true
+	toggleBtn.Text = "Freecam ON"
+	camCF = camera.CFrame
+	camera.CameraType = Enum.CameraType.Scriptable
+	local char = player.Character
+	if char then
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if humanoid then humanoid.PlatformStand = true end
+	end
+end
+
+local function disableFreecam()
+	flying = false
+	toggleBtn.Text = "Freecam OFF"
+	camera.CameraType = Enum.CameraType.Custom
+	local char = player.Character
+	if char then
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if humanoid then humanoid.PlatformStand = false end
+	end
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+	if flying then disableFreecam() else enableFreecam() end
+end)
+
+-- จับ joystick
+UIS.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+		local pos = input.Position
+		if (pos - joystickBG.AbsolutePosition).Magnitude < 100 then
+			joystickStart = pos
+		end
+	end
+end)
+
+UIS.InputChanged:Connect(function(input)
+	if joystickStart and input.UserInputType == Enum.UserInputType.Touch then
+		local delta = input.Position - joystickStart
+		local maxDist = 60
+		if delta.Magnitude > maxDist then delta = delta.Unit * maxDist end
+		joystickKnob.Position = UDim2.new(0.5,delta.X,0.5,delta.Y)
+		if delta.Magnitude > 0 then
+			moveVector = Vector3.new(delta.X,0,-delta.Y) * (delta.Magnitude/maxDist)
+		else
+			moveVector = Vector3.new(0,0,0)
+		end
+	elseif input.UserInputType == Enum.UserInputType.Touch then
+		lookDelta = lookDelta + Vector2.new(input.Delta.X,input.Delta.Y)*0.002
+	end
+end)
+
+UIS.InputEnded:Connect(function(input)
+	if joystickStart and input.UserInputType == Enum.UserInputType.Touch then
+		joystickKnob.Position = UDim2.new(0.5,0,0.5,0)
+		moveVector = Vector3.new(0,0,0)
+		joystickStart = nil
+	end
+end)
+
+-- ปุ่มบิน
+flyUpBtn.MouseButton1Click:Connect(function() flyUp = flyUp == 0 and 1 or 0 end)
+flyDownBtn.MouseButton1Click:Connect(function() flyDown = flyDown == 0 and 1 or 0 end)
+flyLeftBtn.MouseButton1Click:Connect(function() flyLeft = flyLeft == 0 and 1 or 0 end)
+flyRightBtn.MouseButton1Click:Connect(function() flyRight = flyRight == 0 and 1 or 0 end)
+flyFrontBtn.MouseButton1Click:Connect(function() flyFront = flyFront == 0 and 1 or 0 end)
+flyBackBtn.MouseButton1Click:Connect(function() flyBack = flyBack == 0 and 1 or 0 end)
+
+-- Update Freecam
+RunService.RenderStepped:Connect(function(dt)
+	if flying then
+		local rot = CFrame.Angles(-lookDelta.Y, -lookDelta.X, 0)
+		local vel = rot.LookVector*(flyFront - flyBack) + rot.RightVector*(flyRight - flyLeft) + Vector3.new(0,flyUp - flyDown,0)
+		local forwardVel = rot.LookVector * moveVector.Z + rot.RightVector * moveVector.X
+		camCF = camCF + (forwardVel + vel) * speed * dt
+		camera.CFrame = CFrame.new(camCF.Position) * rot
+	end
+end)
