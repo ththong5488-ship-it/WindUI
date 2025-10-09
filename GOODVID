@@ -1,0 +1,36 @@
+-- Simple Instant God Mode (LocalScript)
+-- วางเป็น LocalScript ที่ StarterPlayer > StarterPlayerScripts
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local function enableGod(character)
+    if not character then return end
+    local hum = character:FindFirstChildWhichIsA("Humanoid") or character:WaitForChild("Humanoid", 5)
+    if not hum then return end
+
+    -- ปรับค่า MaxHealth และฟื้นเลือดทันที
+    hum.MaxHealth = 1e6
+    hum.Health = hum.MaxHealth
+
+    -- ถ้ามีการโดนลดเลือด ให้ฟื้นกลับทันที
+    -- ใช้ pcall เพื่อป้องกัน error ถ้า character หายไป
+    local conn
+    conn = hum.HealthChanged:Connect(function()
+        if not hum or not hum.Parent then
+            if conn then pcall(function() conn:Disconnect() end) end
+            return
+        end
+        if hum.Health < hum.MaxHealth then
+            hum.Health = hum.MaxHealth
+        end
+    end)
+end
+
+-- เมื่อตัวละครเกิดใหม่ ให้เปิด god mode ทันที
+if player.Character then
+    enableGod(player.Character)
+end
+player.CharacterAdded:Connect(enableGod)
+
+-- ถ้าต้องการ ปิดการทำงานให้ลบ LocalScript นี้ออกหรือคอมเมนต์โค้ดออก
+print("Instant God Mode (LocalScript) loaded.")
