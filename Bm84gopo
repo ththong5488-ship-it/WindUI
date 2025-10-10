@@ -1,0 +1,44 @@
+-- LocalScript ตัวอย่าง (ใช้ได้เฉพาะคนทำเกมเอง ไม่ใช่โกง)
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- ฟังก์ชันสร้าง BillboardGui โชว์ชื่อ
+local function addNameTag(character, player)
+    if character:FindFirstChild("Head") then
+        local head = character.Head
+        local billboard = Instance.new("BillboardGui")
+        billboard.Adornee = head
+        billboard.Size = UDim2.new(0, 200, 0, 50)
+        billboard.StudsOffset = Vector3.new(0, 2, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Parent = head
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Text = player.Name
+        nameLabel.Size = UDim2.new(1, 0, 1, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.new(1, 1, 1)
+        nameLabel.TextStrokeTransparency = 0
+        nameLabel.Parent = billboard
+    end
+end
+
+-- ใส่ให้ผู้เล่นทุกคน
+local function onCharacterAdded(character, player)
+    addNameTag(character, player)
+end
+
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(function(character)
+        onCharacterAdded(character, player)
+    end)
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    if player.Character then
+        addNameTag(player.Character, player)
+    end
+    onPlayerAdded(player)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
