@@ -1,0 +1,278 @@
+-- Mobile-friendly UI + ESP + Rainbow FOV + Aimbot integration
+-- ใส่ไฟล์นี้เป็น LocalScript (StarterPlayerScripts)
+-- ปรับ Library loader ถ้ามึงใช้ตัวอื่น (ตอนนี้สมมติ Library อยู่แล้ว)
+
+-- ====== Services / Basic ======
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+-- ====== LOAD/CREATE LIBRARY UI (ถ้ามึงมีแล้ว ให้เอาส่วนนี้ออก แล้วใช้ Window/Tab/Section ของมึงแทน) ======
+-- local Library = loadstring(game:HttpGet("https://pastebin.com/raw/OrionLib"))() -- ตัวอย่าง ถ้ามึงโหลดเอง
+-- local Window = Library.CreateLib("TITLE", "DarkTheme")
+-- local Tab = Window:NewTab("TabName")
+-- local Section = Tab:NewSection("Section Name")
+
+-- ถ้ามึงส่งมาใช้แล้ว ให้เอาบรรทัดข้างบนออกและใช้ Window/Tab/Section ของมึงได้เลย
+
+-- ====== ถ้าไม่มี Library, สร้าง UI แบบง่าย ๆ แทน ======
+local hasLibrary = (typeof(Window) == "table")
+if not hasLibrary then
+    -- มึงไม่มี Library ให้สร้าง GUI ง่ายๆ ใช้เป็น fallback (จะใช้ปุ่ม/slider แบบพื้นฐาน)
+    local fakeWindow = {}
+    Window = fakeWindow
+    function fakeWindow:NewTab(name)
+        return {
+            NewSection = function(_, title)
+                return {
+                    NewButton = function(_, txt, hint, func)
+                        -- simple: create a TextButton on-screen (debug)
+                        local scr = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("DebugUI") or Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+                        scr.Name = "DebugUI"
+                        local btn = Instance.new("TextButton", scr)
+                        btn.Text = txt
+                        btn.Size = UDim2.new(0,150,0,30)
+                        btn.Position = UDim2.new(0,10,0,10 + #scr:GetChildren()*35)
+                        btn.MouseButton1Click:Connect(func)
+                    end,
+                    NewToggle = function() end,
+                    NewSlider = function() end,
+                    NewDropdown = function() end
+                }
+            end
+        }
+    end
+    Tab = Window:NewTab("AimTab")
+    Section = Tab:NewSection("Aimbot Section")
+end
+
+-- ====== STATE ======
+local AimbotEnabled = false
+local ESPEnabled = false
+local RainbowFOV = true
+local FOVRadius = 120 -- px
+local AimSmoothness = 8 -- higher = faster interpolation (use slider map later)
+local AimMaxDistance = 1000 -- studs
+local FOVGuiName = "FOVGui_Custom"
+
+-- Table store for created ESP GUIs
+local ESPs = {}
+
+-- ====== CREATE FOV CIRCLE (ScreenGui + ImageLabel) ======
+local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+local fovScreenGui = playerGui:FindFirstChild(FOVGuiName) or Instance.new("ScreenGui", playerGui)
+fovScreenGui.Name = FOVGuiName
+fovScreenGui.ResetOnSpawn = false
+
+local fovFrame = fovScreenGui:FindFirstChild("FOVFrame") or Instance.new("Frame", fovScreenGui)
+fovFrame.Name = "FOVFrame"
+fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+fovFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+fovFrame.Size = UDim2.new(0, FOVRadius*2, 0, FOVRadius*2)
+fovFrame.BackgroundTransparency = 1
+
+local fovOutline = fovFrame:FindFirstChild("Outline") or Instance.new("ImageLabel", fovFrame)
+fovOutline.Name = "Outline"
+fovOutline.Size = UDim2.new(1,0,1,0)
+fovOutline.AnchorPoint = Vector2.new(0.5,0.5)
+fovOutline.Position = UDim2.new(0.5,0,0.5,0)
+fovOutline.Image = "rbxassetid://3570695787" -- circle
+fovOutline.ScaleType = Enum.ScaleType.Slice
+fovOutline.SliceCenter = Rect.new(100,100,100,100)
+fovOutline.BackgroundTransparency = 1
+fovOutline.ImageTransparency = 0.55
+fovOutline.ImageColor3 = Color3.fromHSV(0,1,1)
+
+-- ====== UI CONTROLS (เชื่อมกับ Library) ======
+-- Toggle Aimbot
+Section:NewToggle("Aimbot", "เปิด/ปิดการล็อคหัว (Mobile friendly)", function(state)
+    AimbotEnabled = state
+end)
+
+-- Toggle ESP
+Section:NewToggle("ESP (Name)", "แสดงชื่อผู้เล่นเหนือหัว (BillboardGui)", function(state)
+    ESPEnabled = state
+    if ESPEnabled then
+        for _,pl in ipairs(Players:GetPlayers()) do
+            if pl ~= LocalPlayer then
+                spawn(function() -- safe create
+                    if pl.Character then CreateNameESP(pl) end
+                end)
+            end
+        end
+    else
+        RemoveAllNameESP()
+    end
+end)
+
+-- Toggle Rainbow FOV
+Section:NewToggle("Rainbow FOV", "สีรุ้งวง FOV", function(state)
+    RainbowFOV = state
+end)
+
+-- Slider FOV Size (max 500 px)
+Section:NewSlider("FOV Size", "ปรับขนาดวง FOV (px)", 500, 30, function(value)
+    FOVRadius = value
+    fovFrame.Size = UDim2.new(0, FOVRadius*2, 0, FOVRadius*2)
+end)
+
+-- Slider Smoothness: map slider 0..1 to interpolation speed (0 = instant / snap, 1 = smoothest slow)
+Section:NewSlider("Aim Smooth (0=Snap 1=Smooth)", "ค่าเลี้ยวกล้อง", 1, 0, function(v)
+    -- map to aim speed: smaller v -> higher speed (snap)
+    -- we want AimSmoothness to be interpolation power; choose mapping:
+    if v <= 0 then
+        AimSmoothness = 9999 -- near-instant
+    else
+        AimSmoothness = 6 * (1 / v) -- larger when v small, tweak as needed
+    end
+end)
+
+-- Button: Refresh/create ESP
+Section:NewButton("Refresh ESP", "สร้าง/ลบ ESP ตามสถานะ", function()
+    if ESPEnabled then
+        for _,pl in ipairs(Players:GetPlayers()) do
+            if pl ~= LocalPlayer then CreateNameESP(pl) end
+        end
+    else
+        RemoveAllNameESP()
+    end
+end)
+
+-- ====== ESP FUNCTIONS (BillboardGui showing name + distance) ======
+function CreateNameESP(pl)
+    if ESPs[pl] then return end
+    local char = pl.Character
+    if not char then
+        -- wait for character
+        pl.CharacterAdded:Wait()
+        char = pl.Character
+        if not char then return end
+    end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+    local bg = Instance.new("BillboardGui")
+    bg.Name = "NameESP"
+    bg.AlwaysOnTop = true
+    bg.Size = UDim2.new(0,120,0,40)
+    bg.StudsOffset = Vector3.new(0, 2.5, 0)
+    bg.Adornee = head
+    bg.Parent = head
+
+    local txt = Instance.new("TextLabel", bg)
+    txt.Size = UDim2.new(1,0,1,0)
+    txt.BackgroundTransparency = 1
+    txt.TextScaled = true
+    txt.Text = pl.Name
+    txt.Font = Enum.Font.SourceSansBold
+    txt.TextStrokeTransparency = 0.6
+
+    ESPs[pl] = bg
+end
+
+function RemoveAllNameESP()
+    for pl, gui in pairs(ESPs) do
+        if gui and gui.Parent then gui:Destroy() end
+        ESPs[pl] = nil
+    end
+end
+
+Players.PlayerRemoving:Connect(function(pl)
+    if ESPs[pl] then
+        ESPs[pl]:Destroy()
+        ESPs[pl] = nil
+    end
+end)
+
+Players.PlayerAdded:Connect(function(pl)
+    pl.CharacterAdded:Connect(function()
+        if ESPEnabled then CreateNameESP(pl) end
+    end)
+end)
+
+-- ====== TARGET SELECTION: ใครอยู่ใน FOV (screen-space) และใกล้ที่สุด ======
+local function GetCenterScreen()
+    return Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+end
+
+local function GetClosestPlayerInFOV()
+    local center = GetCenterScreen()
+    local closest = nil
+    local shortest = FOVRadius
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild("Head") and pl.Character:FindFirstChild("HumanoidRootPart") then
+            local head = pl.Character.Head
+            local pos3, onScreen = Camera:WorldToViewportPoint(head.Position)
+            if onScreen then
+                local screenPos = Vector2.new(pos3.X, pos3.Y)
+                local dist = (screenPos - center).Magnitude
+                if dist <= FOVRadius and dist < shortest then
+                    local worldDist = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and (LocalPlayer.Character.HumanoidRootPart.Position - pl.Character.HumanoidRootPart.Position).Magnitude) or math.huge
+                    if worldDist <= AimMaxDistance then
+                        shortest = dist
+                        closest = pl
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- ====== AIM FUNCTION (smooth interpolation using dt) ======
+local function AimAtTargetInstant(target)
+    if not target or not target.Character or not target.Character:FindFirstChild("Head") then return end
+    local headPos = target.Character.Head.Position
+    Camera.CFrame = CFrame.new(Camera.CFrame.Position, headPos)
+end
+
+local function AimAtTargetSmooth(target, dt)
+    if not target or not target.Character or not target.Character:FindFirstChild("Head") then return end
+    local headPos = target.Character.Head.Position
+    local camPos = Camera.CFrame.Position
+    local desired = CFrame.new(camPos, headPos)
+    -- compute lerp alpha from AimSmoothness and dt
+    local alpha = math.clamp(1 - math.exp(-AimSmoothness * dt), 0, 1)
+    Camera.CFrame = Camera.CFrame:Lerp(desired, alpha)
+end
+
+-- ====== MAIN LOOP ======
+local hue = 0
+RunService.RenderStepped:Connect(function(dt)
+    -- update rainbow hue
+    if RainbowFOV then
+        hue = (hue + dt * 0.2) % 1
+        fovOutline.ImageColor3 = Color3.fromHSV(hue, 1, 1)
+    end
+
+    -- keep circle centered
+    fovFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+    -- aimbot behavior
+    if AimbotEnabled then
+        local target = GetClosestPlayerInFOV()
+        if target then
+            -- if AimSmoothness very large -> effectively instant
+            if AimSmoothness >= 999 then
+                AimAtTargetInstant(target)
+            else
+                AimAtTargetSmooth(target, dt)
+            end
+        end
+    end
+end)
+
+-- ====== CLEANUP on respawn ======
+LocalPlayer.CharacterAdded:Connect(function(char)
+    wait(0.5)
+    if ESPEnabled then
+        for _,pl in ipairs(Players:GetPlayers()) do
+            if pl ~= LocalPlayer and pl.Character then CreateNameESP(pl) end
+        end
+    end
+end)
+
+-- ====== Final note ======
+-- โค้ดนี้ออกแบบให้ยัดเข้า UI ของมึงได้เลย ถ้ามึงใช้ Library ตัวอื่น ให้เปลี่ยนชื่อฟังก์ชัน UI ให้ตรง (NewToggle, NewSlider, NewButton ควรอยู่แล้ว)
+-- ถ้ามึงต้องการให้กูแปะปุ่ม Toggle หรือเปลี่ยนตำแหน่ง/สไตล์ UI ให้เข้ากับ Library ที่มึงใช้จริง ๆ บอกชื่อ Library มา กูจะยัดให้เรียบร้อยขอรับ
