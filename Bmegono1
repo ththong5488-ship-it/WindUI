@@ -64,9 +64,9 @@ local WindUI = loadstring(game:HttpGet(
 -- Create Window
 ------------------------------------------------
 local Window = WindUI:CreateWindow({
-    Title = "bmegono1",
+    Title = "ToonZX",
     Icon = "zap",
-    Author = "bmegono1",
+    Author = "ToonZX",
     Folder = "MySuperHub",
 
     Size = UDim2.fromOffset(580, 460),
@@ -126,7 +126,7 @@ ToggleBtn.Parent = ScreenGui
 ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
 ToggleBtn.Position = UDim2.new(0.5, -25, 0, 20)
 ToggleBtn.BackgroundTransparency = 1
-ToggleBtn.Image = "rbxassetid://135543465738910"
+ToggleBtn.Image = "rbxassetid:110951665142995//"
 ToggleBtn.Active = true
 ToggleBtn.Draggable = true
 
