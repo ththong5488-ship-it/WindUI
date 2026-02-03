@@ -126,7 +126,7 @@ ToggleBtn.Parent = ScreenGui
 ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
 ToggleBtn.Position = UDim2.new(0.5, -25, 0, 20)
 ToggleBtn.BackgroundTransparency = 1
-ToggleBtn.Image = "rbxassetid:110951665142995//"
+ToggleBtn.Image = "rbxassetid:135247351769220//"
 ToggleBtn.Active = true
 ToggleBtn.Draggable = true
 
